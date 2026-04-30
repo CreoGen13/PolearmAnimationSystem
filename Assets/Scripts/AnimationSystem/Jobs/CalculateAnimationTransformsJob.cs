@@ -23,6 +23,9 @@ namespace AnimationSystem.Jobs
         
         public TransformSceneHandle LeftHandRotationTransform;
         public TransformSceneHandle RightHandRotationTransform;
+        public TransformSceneHandle LeftHandPositionTransform;
+        public TransformSceneHandle RightHandPositionTransform;
+        
         public TransformStreamHandle LeftHandTarget;
         public TransformStreamHandle RightHandTarget;
         
@@ -61,9 +64,15 @@ namespace AnimationSystem.Jobs
             var weaponLocalPositionDelta = weaponLocalPosition - WeaponObjectLocalStartPosition;
             var handLocalPositionDelta = weaponLocalPositionDelta * HandWeaponWeight;
             var isGrowing = WeaponObjectLocalEndPosition.y > WeaponObjectLocalStartPosition.y;
-            var leftHandPosition = weaponPosition + weaponRotation * (Config.LeftHandLocalPositionOffset + (isGrowing ? handLocalPositionDelta : Vector3.zero));
+            var leftHandPosition = weaponPosition + weaponRotation * (
+                Config.HandsLocalOffset +
+                LeftHandPositionTransform.GetLocalPosition(input) +
+                (isGrowing ? handLocalPositionDelta : Vector3.zero));
             var leftHandRotation = LeftHandRotationTransform.GetRotation(input);
-            var rightHandPosition = weaponPosition + weaponRotation * (Config.RightHandLocalPositionOffset + (isGrowing ? Vector3.zero : handLocalPositionDelta));
+            var rightHandPosition = weaponPosition + weaponRotation * (
+                Config.HandsLocalOffset +
+                RightHandPositionTransform.GetLocalPosition(input) +
+                (isGrowing ? Vector3.zero : handLocalPositionDelta));
             var rightHandRotation = RightHandRotationTransform.GetRotation(input);
             LeftHandTarget.SetGlobalTR(
                 stream,

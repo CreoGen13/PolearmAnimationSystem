@@ -1,4 +1,5 @@
-﻿using AnimationSystem.Jobs;
+﻿using AnimationPairsSearchSystem;
+using AnimationSystem.Jobs;
 using Infrastructure.Interfaces;
 using Sirenix.OdinInspector;
 using UnityEngine;
@@ -23,16 +24,13 @@ namespace AnimationSystem.Character
         
         [Header("Clips")]
         [SerializeField] private AnimationClip idleClip;
-        [SerializeField] private AnimationClip swingClip;
-        [SerializeField] private AnimationClip strikeClip;
+        [SerializeField] private AnimationSwingStrikePair swingStrikePair;
 
         [Header("Settings")]
         [Range(0f, 1f)]
-        [SerializeField] private float swingBlendTime;
+        [SerializeField] private float idleToSwingBlendTime;
         [Range(0f, 1f)]
-        [SerializeField] private float strikeBlendTime;
-        [Range(0f, 1f)]
-        [SerializeField] private float idleBlendTime;
+        [SerializeField] private float swingToIdleBlendTime;
         [Range(0f, 1f)]
         [SerializeField] private float weaponMovingTime;
         [Range(0f, 1f)]
@@ -50,12 +48,11 @@ namespace AnimationSystem.Character
         [Header("Hands Settings")]
         [SerializeField] private Transform leftHandRotationTransform;
         [SerializeField] private Transform rightHandRotationTransform;
+        [SerializeField] private Transform leftHandPositionTransform;
+        [SerializeField] private Transform rightHandPositionTransform;
 
         [SerializeField] private Transform leftHandTarget;
         [SerializeField] private Transform rightHandTarget;
-        
-        [SerializeField] private Vector3 leftHandOffset;
-        [SerializeField] private Vector3 rightHandOffset;
         
         [Header("Sampler")]
         [SerializeField] private Transform samplerWeaponBone;
@@ -150,7 +147,7 @@ namespace AnimationSystem.Character
                 }
                 case CharacterAnimationState.IdleToSwing:
                 {
-                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / swingBlendTime);
+                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / idleToSwingBlendTime);
 
                     SetAnimationWeights(1f - deltaWeight, deltaWeight, 0);
 
@@ -163,10 +160,10 @@ namespace AnimationSystem.Character
                 }
                 case CharacterAnimationState.Swing:
                 {
-                    if (_swingClipPlayable.GetTime() >= swingClip.length)
+                    if (_swingClipPlayable.GetTime() >= swingStrikePair.SwingLength)
                     {
                         _strikePassedTime = 0;
-                        _strikeClipPlayable.SetTime(0);
+                        _strikeClipPlayable.SetTime(swingStrikePair.StrikeStartTime);
                         
                         SetJobHitTargetWeight(0);
                         ChangeState(CharacterAnimationState.SwingToStrike);
@@ -176,10 +173,10 @@ namespace AnimationSystem.Character
                 }
                 case CharacterAnimationState.SwingToStrike:
                 {
-                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / strikeBlendTime);
+                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / swingStrikePair.BlendTime);
 
                     SetAnimationWeights(0, 1f - deltaWeight, deltaWeight);
-                    SetJobHitTargetWeight(_strikePassedTime / strikeClip.length);
+                    SetJobHitTargetWeight(_strikePassedTime / swingStrikePair.StrikeLength);
                     
                     _strikePassedTime += Time.deltaTime;
                     
@@ -192,13 +189,13 @@ namespace AnimationSystem.Character
                 }
                 case CharacterAnimationState.Strike:
                 {
-                    SetJobHitTargetWeight(_strikePassedTime / strikeClip.length);
+                    SetJobHitTargetWeight(_strikePassedTime / swingStrikePair.StrikeLength);
                     
                     _strikePassedTime += Time.deltaTime;
                     
-                    if (_strikeClipPlayable.GetTime() >= strikeClip.length)
+                    if (_strikeClipPlayable.GetTime() >= swingStrikePair.StrikeLength)
                     {
-                        _strikePassedTime = idleBlendTime;
+                        _strikePassedTime = swingToIdleBlendTime;
                         _idleClipPlayable.SetTime(0);
                         
                         ChangeState(CharacterAnimationState.StrikeToIdle);
@@ -208,10 +205,10 @@ namespace AnimationSystem.Character
                 }
                 case CharacterAnimationState.StrikeToIdle:
                 {
-                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / idleBlendTime);
+                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / swingToIdleBlendTime);
 
                     SetAnimationWeights(deltaWeight, 0, 1f - deltaWeight);
-                    SetJobHitTargetWeight(_strikePassedTime / idleBlendTime);
+                    SetJobHitTargetWeight(_strikePassedTime / swingToIdleBlendTime);
                     
                     _strikePassedTime -= Time.deltaTime;
                     
@@ -233,10 +230,10 @@ namespace AnimationSystem.Character
             _samplerGraph = PlayableGraph.Create("Sampler Animation");
             _samplerGraph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
             
-            _sampleStrikeClipPlayable = AnimationClipPlayable.Create(_samplerGraph, strikeClip);
+            _sampleStrikeClipPlayable = AnimationClipPlayable.Create(_samplerGraph, swingStrikePair.StrikeAnimation);
             _sampleStrikeClipPlayable.SetApplyFootIK(false);
             _sampleStrikeClipPlayable.SetApplyPlayableIK(false);
-            _sampleStrikeClipPlayable.SetTime(strikeClip.length);
+            _sampleStrikeClipPlayable.SetTime(swingStrikePair.StrikeLength);
             _sampleStrikeClipPlayable.SetSpeed(0);
             
             var output = AnimationPlayableOutput.Create(
@@ -265,8 +262,8 @@ namespace AnimationSystem.Character
             var output = AnimationPlayableOutput.Create(_graph, "Animation Output", animator);
             
             _idleClipPlayable = AnimationClipPlayable.Create(_graph, idleClip);
-            _swingClipPlayable = AnimationClipPlayable.Create(_graph, swingClip);
-            _strikeClipPlayable = AnimationClipPlayable.Create(_graph, strikeClip);
+            _swingClipPlayable = AnimationClipPlayable.Create(_graph, swingStrikePair.SwingAnimation);
+            _strikeClipPlayable = AnimationClipPlayable.Create(_graph, swingStrikePair.StrikeAnimation);
 
             _graph.Connect(_idleClipPlayable, 0, _mixer, IDLE_INDEX);
             _graph.Connect(_swingClipPlayable, 0, _mixer, SWING_INDEX);
@@ -292,15 +289,12 @@ namespace AnimationSystem.Character
             var weaponRotOffset = Quaternion.Euler(weaponRotationOffset);
             var localShouldersPoint = samplerWeaponBone.InverseTransformPoint(samplerShouldersBone.position);
             var handsLocalOffset = new Vector3(0, localShouldersPoint.y, 0);
-            var leftHandLocalOffset = handsLocalOffset + leftHandOffset;
-            var rightHandLocalOffset = handsLocalOffset + rightHandOffset;
             
             var config = new CalculateAnimationTransformsJobConfig
             {
                 WeaponRotationOffset = weaponRotOffset,
                 
-                LeftHandLocalPositionOffset = leftHandLocalOffset,
-                RightHandLocalPositionOffset = rightHandLocalOffset,
+                HandsLocalOffset = handsLocalOffset,
             };
             
             return new CalculateAnimationTransformsJob
@@ -313,6 +307,8 @@ namespace AnimationSystem.Character
                 WeaponObject = animator.BindStreamTransform(weaponObject),
                 LeftHandRotationTransform = animator.BindSceneTransform(leftHandRotationTransform),
                 RightHandRotationTransform = animator.BindSceneTransform(rightHandRotationTransform),
+                LeftHandPositionTransform = animator.BindSceneTransform(leftHandPositionTransform),
+                RightHandPositionTransform = animator.BindSceneTransform(rightHandPositionTransform),
                 LeftHandTarget = animator.BindStreamTransform(leftHandTarget),
                 RightHandTarget = animator.BindStreamTransform(rightHandTarget)
             };

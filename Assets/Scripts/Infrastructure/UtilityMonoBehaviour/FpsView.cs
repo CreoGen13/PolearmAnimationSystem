@@ -10,19 +10,21 @@ namespace Infrastructure.UtilityMonoBehaviour
 
 		private float _timer;
 
-		void Awake () {
+		private void Awake () {
 			QualitySettings.vSyncCount = 0;
 			Application.targetFrameRate = 75;
 		}
 	
 		private void Update()
 		{
-			if (Time.unscaledTime > _timer)
+			if (!(Time.unscaledTime > _timer))
 			{
-				int fps = (int)(1f / Time.unscaledDeltaTime);
-				fpsText.text = "FPS: " + fps;
-				_timer = Time.unscaledTime + hudRefreshRate;
+				return;
 			}
+
+			var fps = (int)(1f / Time.unscaledDeltaTime);
+			fpsText.text = "FPS: " + fps;
+			_timer = Time.unscaledTime + hudRefreshRate;
 		}
 	}
 }
