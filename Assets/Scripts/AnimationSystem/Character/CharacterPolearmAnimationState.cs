@@ -1,6 +1,6 @@
 ﻿namespace AnimationSystem.Character
 {
-    public enum CharacterAnimationState
+    public enum CharacterPolearmAnimationState
     {
         Idle,
         MoveHands,
@@ -8,6 +8,7 @@
         Swing,
         SwingToStrike,
         Strike,
+        StrikeEnd,
         StrikeToIdle
     }
 }

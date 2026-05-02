@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: DefaultSwingLeft
   m_EditorClassIdentifier: Assembly-CSharp::AnimationPairsSearchSystem.PreparedAnimationClip
   animationType: 0
-  clip: {fileID: -1586519702821314595, guid: 18a701b4849ff3047b2ff754f7d06c1c, type: 3}
+  clip: {fileID: -7543083669672256674, guid: 18a701b4849ff3047b2ff754f7d06c1c, type: 3}
   blendStartTime: 0.5
   blendEndTime: 1

@@ -6,27 +6,34 @@ namespace AnimationPairsSearchSystem
     [CreateAssetMenu(fileName = "AnimationPair", menuName = "Scriptables/AnimationPair")]
     public class AnimationSwingStrikePair : ScriptableObject
     {
-        [ReadOnly][ShowInInspector] public AnimationClip SwingAnimation { get; private set; }
-        [ReadOnly][ShowInInspector] public AnimationClip StrikeAnimation { get; private set; }
+        [HideInInspector][SerializeField] private AnimationClip swingAnimation;
+        [HideInInspector] [SerializeField] private AnimationClip strikeAnimation;
+
+        [HideInInspector] [SerializeField] private float swingEndTime;
+        [HideInInspector] [SerializeField] private float strikeStartTime;
+        [HideInInspector] [SerializeField] private float blendTime;
         
-        [ReadOnly][ShowInInspector] public float SwingEndTime { get; private set; }
         [ShowInInspector] public float SwingLength => SwingEndTime;
-        [ReadOnly][ShowInInspector] public float StrikeStartTime { get; private set; }
         [ShowInInspector] public float StrikeLength => StrikeAnimation?.length - StrikeStartTime ?? 0f;
-        [ReadOnly][ShowInInspector] public float BlendTime { get; private set; }
+        [ShowInInspector] public AnimationClip SwingAnimation => swingAnimation;
+        [ShowInInspector] public AnimationClip StrikeAnimation => strikeAnimation;
+
+        [ShowInInspector] public float SwingEndTime => swingEndTime;
+        [ShowInInspector] public float StrikeStartTime => strikeStartTime;
+        [ShowInInspector] public float BlendTime => blendTime;
 
         public void Initialize(
-            AnimationClip swingAnimation,
-            AnimationClip strikeAnimation,
-            float swingEndTime,
-            float strikeStartTime,
-            float blendTime)
+            AnimationClip newSwingAnimation,
+            AnimationClip newStrikeAnimation,
+            float newSwingEndTime,
+            float newStrikeStartTime,
+            float newBlendTime)
         {
-            SwingAnimation = swingAnimation;
-            StrikeAnimation = strikeAnimation;
-            SwingEndTime = swingEndTime;
-            StrikeStartTime = strikeStartTime;
-            BlendTime = blendTime;
+            swingAnimation = newSwingAnimation;
+            strikeAnimation = newStrikeAnimation;
+            swingEndTime = newSwingEndTime;
+            strikeStartTime = newStrikeStartTime;
+            blendTime = newBlendTime;
         }
     }
 }

@@ -11,15 +11,8 @@ namespace Infrastructure.UtilityMonoBehaviour
 
         private void OnDrawGizmos()
         {
-            // Set the color with custom alpha.
-            Gizmos.color = color; // Red with custom alpha
-
-            // Draw the sphere.
+            Gizmos.color = color;
             Gizmos.DrawSphere(transform.position, radius);
-
-            // Draw wire sphere outline.
-            Gizmos.color = Color.white;
-            Gizmos.DrawWireSphere(transform.position, radius);
         }
     }
 }

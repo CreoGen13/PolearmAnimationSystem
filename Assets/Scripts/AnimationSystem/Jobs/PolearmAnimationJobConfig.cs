@@ -2,9 +2,8 @@
 
 namespace AnimationSystem.Jobs
 {
-    public struct CalculateAnimationTransformsJobConfig
+    public struct PolearmAnimationJobConfig
     {
-        public Quaternion WeaponRotationOffset;
         public Vector3 HandsLocalOffset;
     }
 }

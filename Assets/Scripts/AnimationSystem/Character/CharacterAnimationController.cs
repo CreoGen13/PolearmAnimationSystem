@@ -4,6 +4,7 @@ using Infrastructure.Interfaces;
 using Sirenix.OdinInspector;
 using UnityEngine;
 using UnityEngine.Animations;
+using UnityEngine.Animations.Rigging;
 using UnityEngine.Playables;
 
 namespace AnimationSystem.Character
@@ -14,17 +15,29 @@ namespace AnimationSystem.Character
         IUpdatable,
         IDestroyable
     {
-        private const int IDLE_INDEX = 0;
-        private const int SWING_INDEX = 1;
-        private const int STRIKE_INDEX = 2;
+        private const int LOCOMOTION_IDLE_ANIMATION_INDEX = 0;
+        private const int LOCOMOTION_STEP_FORWARD_ANIMATION_INDEX = 1;
+        
+        private const int POLEARM_IDLE_ANIMATION_INDEX = 0;
+        private const int POLEARM_SWING_ANIMATION_INDEX = 1;
+        private const int POLEARM_STRIKE_ANIMATION_INDEX = 2;
+        
+        private const int LOCOMOTION_LAYER_INDEX = 0;
+        private const int POLEARM_LAYER_INDEX = 1;
         
         [Header("References")]
         [SerializeField] private Animator animator;
-        [SerializeField] private Transform hitTarget;
+        [SerializeField] private RigBuilder rigBuilder;
         
-        [Header("Clips")]
-        [SerializeField] private AnimationClip idleClip;
-        [SerializeField] private AnimationSwingStrikePair swingStrikePair;
+        [Header("Strike Clips")]
+        [SerializeField] private AnimationClip polearmIdleClip;
+        [SerializeField] private AnimationSwingStrikePair polearmSwingStrikePair;
+        [SerializeField] private AvatarMask polearmAvatarMask;
+        
+        [Header("Locomotion Clips")]
+        [SerializeField] private AnimationClip locomotionIdleClip;
+        [SerializeField] private AnimationClip locomotionStepForwardClip;
+        [SerializeField] private AvatarMask locomotionAvatarMask;
 
         [Header("Settings")]
         [Range(0f, 1f)]
@@ -36,14 +49,15 @@ namespace AnimationSystem.Character
         [Range(0f, 1f)]
         [SerializeField] private float handsMovingTime;
         
-        [Header("Weapon Settings")]
+        [Header("Polearm Settings")]
+        [SerializeField] private float strikeEndTime;
+        [SerializeField] private float startWeaponOffset;
+        
+        [SerializeField] private Transform hitTarget;
         [SerializeField] private Transform weaponBone;
         [SerializeField] private Transform weapon;
         [SerializeField] private Transform weaponObject;
         [SerializeField] private MeshFilter weaponMeshFilter;
-        
-        [SerializeField] private Vector3 weaponRotationOffset;
-        [SerializeField] private float startWeaponOffset;
         
         [Header("Hands Settings")]
         [SerializeField] private Transform leftHandRotationTransform;
@@ -54,34 +68,79 @@ namespace AnimationSystem.Character
         [SerializeField] private Transform leftHandTarget;
         [SerializeField] private Transform rightHandTarget;
         
+        [Header("Locomotion Settings")]
+        [SerializeField] private float stepHeight;
+        [SerializeField] private float stepStartTimeOffset;
+        
+        [SerializeField] private float minStepLength = 0.3f;
+        [SerializeField] private float maxStepLength = 0.7f;
+        
+        [SerializeField] private Transform rightFootBone;
+        [SerializeField] private Transform rightFootTarget;
+
+        [SerializeField] private ChainIKConstraint rightFootIK;
+        
         [Header("Sampler")]
         [SerializeField] private Transform samplerWeaponBone;
         [SerializeField] private Transform samplerStrikePivotBone;
         [SerializeField] private Transform samplerShouldersBone;
+        [SerializeField] private Transform samplerRightFootBone;
         [SerializeField] private Animator samplerAnimator;
+
+        private float StrikeAnimationTime => idleToSwingBlendTime +
+                                             polearmSwingStrikePair.SwingLength +
+                                             polearmSwingStrikePair.BlendTime +
+                                             polearmSwingStrikePair.StrikeLength +
+                                             (_useHands ? handsMovingTime + weaponMovingTime : 0);
         
         private PlayableGraph _graph;
+        private AnimationLayerMixerPlayable _mixer;
+        private AnimationMixerPlayable _polearmMixer;
+        private AnimationMixerPlayable _locomotionMixer;
+        private AnimationClipPlayable _locomotionIdleClipPlayable;
+        private AnimationClipPlayable _locomotionStepForwardClipPlayable;
+        private AnimationClipPlayable _polearmIdleClipPlayable;
+        private AnimationClipPlayable _polearmSwingClipPlayable;
+        private AnimationClipPlayable _polearmStrikeClipPlayable;
+        private AnimationScriptPlayable _polearmAnimationPlayable;
+        private AnimationScriptPlayable _locomotionAnimationPlayable;
+        private PolearmAnimationJob _polearmAnimationJob;
+        private LocomotionAnimationJob _locomotionAnimationJob;
+        
         private PlayableGraph _samplerGraph;
-        private AnimationMixerPlayable _mixer;
-        private AnimationClipPlayable _idleClipPlayable;
-        private AnimationClipPlayable _swingClipPlayable;
-        private AnimationClipPlayable _strikeClipPlayable;
-        private AnimationClipPlayable _sampleStrikeClipPlayable;
-        private AnimationScriptPlayable _animationPlayable;
+        private AnimationLayerMixerPlayable _sampleMixer;
+        private AnimationClipPlayable _sampleLocomotionStepClipPlayable;
+        private AnimationClipPlayable _sampleLocomotionIdleClipPlayable;
+        private AnimationClipPlayable _samplePolearmIdleClipPlayable;
+        private AnimationClipPlayable _samplePolearmStrikeClipPlayable;
 
-        private CharacterAnimationState _animationState;
-        private float _blendPassedTime;
-        private float _strikePassedTime;
-        private float _moveHandsPassedTime;
+        private CharacterPolearmAnimationState polearmAnimationState;
+        private CharacterLocomotionAnimationState locomotionAnimationState;
+        
+        private float _locomotionBlendPassedTime;
+        
+        private float _polearmPassedTime;
+        private float _polearmBlendPassedTime;
+        private float _polearmStrikePassedTime;
+        private float _polearmMoveHandsPassedTime;
+
+        private bool _isStepPlaying;
+        private float _stepLength;
+
+        private bool _useHands;
+        private bool _useStep;
 
         [Button]
         private void PlayStrike()
         {
-            _moveHandsPassedTime = 0;
-            _swingClipPlayable.SetTime(0);
-            SetJobMovingHandsWeight(0, 0);
+            _isStepPlaying = false;
+            _polearmPassedTime = 0;
+            _polearmMoveHandsPassedTime = 0;
+            _polearmSwingClipPlayable.SetSpeed(0);
+            _polearmSwingClipPlayable.SetTime(0);
+            SetPolearmJobMovingHandsWeight(0, 0);
             
-            Sample(out var bakedWeaponEndPos, out var bakedWeaponEndRot);
+            SampleStrikeEnd(false, out var bakedWeaponEndPos, out var bakedWeaponEndRot);
             
             var strikePivotPos = samplerStrikePivotBone.position;
             var weaponLocalOffset = new Vector3(0, (bakedWeaponEndPos - samplerStrikePivotBone.position).magnitude, 0);
@@ -93,216 +152,379 @@ namespace AnimationSystem.Character
             var deltaPos = targetWeaponPos - bakedWeaponEndPos;
             var currentDist = weaponObject.localPosition.y;
             var targetDist = (targetWeaponPos - targetPos).magnitude - 1;
-            var useMoveHands = !Mathf.Approximately(currentDist, targetDist);
+            var deltaDist = targetDist - currentDist;
+            _useStep = deltaDist >= minStepLength;
+            _stepLength = Mathf.Clamp(deltaDist, minStepLength, maxStepLength);
+            var handsDist = Mathf.Clamp(targetDist - _stepLength, currentDist, targetDist);
+
+            if (_useStep)
+            {
+                SampleStrikeEnd(true, out bakedWeaponEndPos, out bakedWeaponEndRot);
+                strikePivotPos = samplerStrikePivotBone.position;
+                weaponLocalOffset = new Vector3(0, (bakedWeaponEndPos - samplerStrikePivotBone.position).magnitude, 0);
+                targetDir = (targetPos - strikePivotPos).normalized;
+                deltaRot = Quaternion.FromToRotation(bakedWeaponEndRot * Vector3.up, targetDir);
+                targetWeaponRot = deltaRot * bakedWeaponEndRot;
+                targetWeaponPos = strikePivotPos + targetWeaponRot * weaponLocalOffset;
+                deltaPos = targetWeaponPos - bakedWeaponEndPos;
+                currentDist = weaponObject.localPosition.y;
+                targetDist = (targetWeaponPos - targetPos).magnitude - 1;
+            }
             
-            var job = _animationPlayable.GetJobData<CalculateAnimationTransformsJob>();
-            job.WeaponCorrectionDeltaRotation = deltaRot;
-            job.WeaponCorrectionDeltaPosition = deltaPos;
-            job.WeaponObjectLocalStartPosition = new Vector3(0, currentDist, 0);
-            job.WeaponObjectLocalEndPosition = new Vector3(0, targetDist, 0);
-            _animationPlayable.SetJobData(job);
+            _useHands = !Mathf.Approximately(currentDist, targetDist);
             
-            ChangeState(useMoveHands ?
-                CharacterAnimationState.MoveHands :
-                CharacterAnimationState.IdleToSwing);
+            var polearmJob = _polearmAnimationPlayable.GetJobData<PolearmAnimationJob>();
+            polearmJob.WeaponCorrectionDeltaRotation = deltaRot;
+            polearmJob.WeaponCorrectionDeltaPosition = deltaPos;
+            polearmJob.WeaponObjectLocalStartPosition = new Vector3(0, currentDist, 0);
+            polearmJob.WeaponObjectLocalEndPosition = new Vector3(0, targetDist, 0);
+            _polearmAnimationPlayable.SetJobData(polearmJob);
+            
+            ChangePolearmState(_useHands ?
+                CharacterPolearmAnimationState.MoveHands :
+                CharacterPolearmAnimationState.IdleToSwing);
+        }
+
+        private void PlayStep()
+        {
+            _isStepPlaying = true;
+            _locomotionStepForwardClipPlayable.SetTime(0);
+            _locomotionStepForwardClipPlayable.SetSpeed(1);
+            SetLocomotionJobStepWeight(0);
+
+            var startPosition = rightFootBone.position;
+            var endPosition = rightFootBone.position + new Vector3(0, 0, _stepLength);
+                
+            var locomotionJob = _locomotionAnimationPlayable.GetJobData<LocomotionAnimationJob>();
+            locomotionJob.FootStartPosition = startPosition;
+            locomotionJob.FootEndPosition = endPosition;
+            _locomotionAnimationPlayable.SetJobData(locomotionJob);
+            
+            ChangeLocomotionState(CharacterLocomotionAnimationState.StepForward);
+        }
+        private void PlayStepToIdle()
+        {
+            _locomotionStepForwardClipPlayable.SetTime(locomotionStepForwardClip.length);
+            _locomotionStepForwardClipPlayable.SetSpeed(-1);
+            SetLocomotionJobStepWeight(1);
+                        
+            ChangeLocomotionState(CharacterLocomotionAnimationState.StepToIdle);
         }
         
         public void Initialize()
         {
-            ChangeState(CharacterAnimationState.Idle);
+            ChangePolearmState(CharacterPolearmAnimationState.Idle);
             CreateSamplerGraph();
+            CreatePolearmJob();
+            CreateLocomotionJob();
             CreateGraph();
         }
-        
         public void ManualUpdate()
         {
-            switch (_animationState)
+            UpdateStrikeAnimation();
+
+            if (_useStep &&
+                !_isStepPlaying &&
+                StrikeAnimationTime - _polearmPassedTime - stepStartTimeOffset <= locomotionStepForwardClip.length)
             {
-                case CharacterAnimationState.Idle:
+                PlayStep();
+            }
+
+            if (polearmAnimationState == CharacterPolearmAnimationState.StrikeToIdle &&
+                _polearmStrikeClipPlayable.GetTime() >= polearmSwingStrikePair.StrikeLength &&
+                _locomotionBlendPassedTime >= locomotionStepForwardClip.length)
+            {
+                PlayStepToIdle();
+            }
+
+            UpdateLocomotionAnimation();
+        }
+
+        private void UpdateStrikeAnimation()
+        {
+            switch (polearmAnimationState)
+            {
+                case CharacterPolearmAnimationState.Idle:
                 {
                     return;
                 }
-                case CharacterAnimationState.MoveHands:
+                case CharacterPolearmAnimationState.MoveHands:
                 {
                     var maxTime = weaponMovingTime + handsMovingTime;
-                    var handsPassedTime = _moveHandsPassedTime - weaponMovingTime;
-                    var deltaWeaponWeight = Mathf.Clamp01(_moveHandsPassedTime / weaponMovingTime);
-                    var deltaHandsWeight = Mathf.Clamp01(_moveHandsPassedTime < weaponMovingTime ?
+                    var handsPassedTime = _polearmMoveHandsPassedTime - weaponMovingTime;
+                    var deltaWeaponWeight = Mathf.Clamp01(_polearmMoveHandsPassedTime / weaponMovingTime);
+                    var deltaHandsWeight = Mathf.Clamp01(_polearmMoveHandsPassedTime < weaponMovingTime ?
                         1 :
                         (handsMovingTime - handsPassedTime) / handsMovingTime);
 
-                    SetJobMovingHandsWeight(deltaWeaponWeight, deltaHandsWeight);
+                    SetPolearmJobMovingHandsWeight(deltaWeaponWeight, deltaHandsWeight);
 
-                    _moveHandsPassedTime += Time.deltaTime;
+                    _polearmMoveHandsPassedTime += Time.deltaTime;
                     
-                    if (_moveHandsPassedTime >= maxTime)
+                    if (_polearmMoveHandsPassedTime >= maxTime)
                     {
-                        _swingClipPlayable.SetTime(0);
+                        _polearmSwingClipPlayable.SetTime(0);
+                        _polearmSwingClipPlayable.SetSpeed(0);
                         
-                        SetJobMovingHandsWeight(1, 0);
-                        ChangeState(CharacterAnimationState.IdleToSwing);
+                        SetPolearmJobMovingHandsWeight(1, 0);
+                        ChangePolearmState(CharacterPolearmAnimationState.IdleToSwing);
                     }
                     
                     break;
                 }
-                case CharacterAnimationState.IdleToSwing:
+                case CharacterPolearmAnimationState.IdleToSwing:
                 {
-                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / idleToSwingBlendTime);
+                    var deltaWeight = Mathf.Clamp01(_polearmBlendPassedTime / idleToSwingBlendTime);
 
-                    SetAnimationWeights(1f - deltaWeight, deltaWeight, 0);
+                    SetPolearmAnimationWeights(1f - deltaWeight, deltaWeight, 0);
 
                     if (deltaWeight >= 1f)
                     {
-                        ChangeState(CharacterAnimationState.Swing);
-                    }
-                    
-                    break;
-                }
-                case CharacterAnimationState.Swing:
-                {
-                    if (_swingClipPlayable.GetTime() >= swingStrikePair.SwingLength)
-                    {
-                        _strikePassedTime = 0;
-                        _strikeClipPlayable.SetTime(swingStrikePair.StrikeStartTime);
+                        _polearmSwingClipPlayable.SetSpeed(1);
                         
-                        SetJobHitTargetWeight(0);
-                        ChangeState(CharacterAnimationState.SwingToStrike);
+                        ChangePolearmState(CharacterPolearmAnimationState.Swing);
                     }
                     
                     break;
                 }
-                case CharacterAnimationState.SwingToStrike:
+                case CharacterPolearmAnimationState.Swing:
                 {
-                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / swingStrikePair.BlendTime);
-
-                    SetAnimationWeights(0, 1f - deltaWeight, deltaWeight);
-                    SetJobHitTargetWeight(_strikePassedTime / swingStrikePair.StrikeLength);
+                    if (_polearmSwingClipPlayable.GetTime() >= polearmSwingStrikePair.SwingLength)
+                    {
+                        _polearmStrikePassedTime = 0;
+                        _polearmStrikeClipPlayable.SetTime(polearmSwingStrikePair.StrikeStartTime);
+                        _polearmStrikeClipPlayable.SetSpeed(0);
+                        
+                        ChangePolearmState(CharacterPolearmAnimationState.SwingToStrike);
+                    }
                     
-                    _strikePassedTime += Time.deltaTime;
+                    break;
+                }
+                case CharacterPolearmAnimationState.SwingToStrike:
+                {
+                    var deltaWeight = Mathf.Clamp01(_polearmBlendPassedTime / polearmSwingStrikePair.BlendTime);
+
+                    SetPolearmAnimationWeights(0, 1f - deltaWeight, deltaWeight);
                     
                     if (deltaWeight >= 1f)
                     {
-                        ChangeState(CharacterAnimationState.Strike);
-                    }
-                    
-                    break;
-                }
-                case CharacterAnimationState.Strike:
-                {
-                    SetJobHitTargetWeight(_strikePassedTime / swingStrikePair.StrikeLength);
-                    
-                    _strikePassedTime += Time.deltaTime;
-                    
-                    if (_strikeClipPlayable.GetTime() >= swingStrikePair.StrikeLength)
-                    {
-                        _strikePassedTime = swingToIdleBlendTime;
-                        _idleClipPlayable.SetTime(0);
-                        
-                        ChangeState(CharacterAnimationState.StrikeToIdle);
-                    }
-                    
-                    break;
-                }
-                case CharacterAnimationState.StrikeToIdle:
-                {
-                    var deltaWeight = Mathf.Clamp01(_blendPassedTime / swingToIdleBlendTime);
+                        _polearmStrikeClipPlayable.SetSpeed(1);
+                        SetPolearmJobHitTargetWeight(0);
 
-                    SetAnimationWeights(deltaWeight, 0, 1f - deltaWeight);
-                    SetJobHitTargetWeight(_strikePassedTime / swingToIdleBlendTime);
+                        ChangePolearmState(CharacterPolearmAnimationState.Strike);
+                    }
                     
-                    _strikePassedTime -= Time.deltaTime;
+                    break;
+                }
+                case CharacterPolearmAnimationState.Strike:
+                {
+                    SetPolearmJobHitTargetWeight(_polearmStrikePassedTime / polearmSwingStrikePair.StrikeLength);
+                    
+                    _polearmStrikePassedTime += Time.deltaTime;
+                    
+                    if (_polearmStrikeClipPlayable.GetTime() >= polearmSwingStrikePair.StrikeLength)
+                    {
+                        _polearmStrikePassedTime = swingToIdleBlendTime;
+                        _polearmIdleClipPlayable.SetTime(0);
+                        _polearmIdleClipPlayable.SetSpeed(0);
+                        
+                        ChangePolearmState(CharacterPolearmAnimationState.StrikeEnd);
+                    }
+                    
+                    break;
+                }
+                case CharacterPolearmAnimationState.StrikeEnd:
+                {
+                    if (_polearmBlendPassedTime >= strikeEndTime)
+                    {
+                        ChangePolearmState(CharacterPolearmAnimationState.StrikeToIdle);
+                    }
+                    
+                    break;
+                }
+                case CharacterPolearmAnimationState.StrikeToIdle:
+                {
+                    var deltaWeight = Mathf.Clamp01(_polearmBlendPassedTime / swingToIdleBlendTime);
+
+                    SetPolearmAnimationWeights(deltaWeight, 0, 1f - deltaWeight);
+                    SetPolearmJobHitTargetWeight(_polearmStrikePassedTime / swingToIdleBlendTime);
+                    
+                    _polearmStrikePassedTime -= Time.deltaTime;
                     
                     if (deltaWeight >= 1f)
                     {
-                        SetJobHitTargetWeight(0);
-                        ChangeState(CharacterAnimationState.Idle);
+                        _polearmIdleClipPlayable.SetSpeed(1);
+                        SetPolearmJobHitTargetWeight(0);
+                        
+                        ChangePolearmState(CharacterPolearmAnimationState.Idle);
                     }
                     
                     break;
                 }
             }
 
-            _blendPassedTime += Time.deltaTime;
+            _polearmPassedTime += Time.deltaTime;
+            _polearmBlendPassedTime += Time.deltaTime;
         }
+        private void UpdateLocomotionAnimation()
+        {
+            switch (locomotionAnimationState)
+            {
+                case CharacterLocomotionAnimationState.Idle:
+                {
+                    return;
+                }
+                case CharacterLocomotionAnimationState.StepForward:
+                {
+                    var deltaWeight = Mathf.Clamp01(_locomotionBlendPassedTime / locomotionStepForwardClip.length);
+                    var sinWeight = Mathf.Sin(deltaWeight * Mathf.PI + Mathf.PI);
 
+                    SetLocomotionAnimationWeights(1 - deltaWeight, deltaWeight);
+                    SetLocomotionJobStepWeight(deltaWeight);
+                    SetFootIKWeight(sinWeight);
+                    
+                    break;
+                }
+                case CharacterLocomotionAnimationState.StepToIdle:
+                {
+                    var deltaWeight = 1 - Mathf.Clamp01(_locomotionBlendPassedTime / locomotionStepForwardClip.length);
+                    var sinWeight = Mathf.Sin(deltaWeight * Mathf.PI + Mathf.PI);
+                    
+                    SetLocomotionAnimationWeights(1 - deltaWeight, deltaWeight);
+                    SetLocomotionJobStepWeight(deltaWeight);
+                    SetFootIKWeight(sinWeight);
+                    
+                    if (deltaWeight <= 0)
+                    {
+                        SetLocomotionJobStepWeight(0);
+                        
+                        ChangeLocomotionState(CharacterLocomotionAnimationState.Idle);
+                    }
+                    
+                    break;
+                }
+            }
+            
+            _locomotionBlendPassedTime += Time.deltaTime;
+        }
+        
         private void CreateSamplerGraph()
         {
             _samplerGraph = PlayableGraph.Create("Sampler Animation");
             _samplerGraph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+            _sampleMixer = AnimationLayerMixerPlayable.Create(_samplerGraph, 4);
+            var output = AnimationPlayableOutput.Create(_samplerGraph, "Sampler Animation Output", samplerAnimator);
             
-            _sampleStrikeClipPlayable = AnimationClipPlayable.Create(_samplerGraph, swingStrikePair.StrikeAnimation);
-            _sampleStrikeClipPlayable.SetApplyFootIK(false);
-            _sampleStrikeClipPlayable.SetApplyPlayableIK(false);
-            _sampleStrikeClipPlayable.SetTime(swingStrikePair.StrikeLength);
-            _sampleStrikeClipPlayable.SetSpeed(0);
+            _sampleLocomotionIdleClipPlayable = AnimationClipPlayable.Create(_samplerGraph, locomotionIdleClip);
+            _sampleLocomotionStepClipPlayable = AnimationClipPlayable.Create(_samplerGraph, locomotionStepForwardClip);
+            _samplePolearmIdleClipPlayable = AnimationClipPlayable.Create(_samplerGraph, polearmIdleClip);
+            _samplePolearmStrikeClipPlayable = AnimationClipPlayable.Create(_samplerGraph, polearmSwingStrikePair.StrikeAnimation);
             
-            var output = AnimationPlayableOutput.Create(
-                _samplerGraph,
-                "Sampler Animation Output",
-                samplerAnimator
-            );
+            _samplePolearmStrikeClipPlayable.SetTime(polearmSwingStrikePair.StrikeLength);
+            _sampleLocomotionStepClipPlayable.SetTime(locomotionStepForwardClip.length);
             
-            output.SetSourcePlayable(_sampleStrikeClipPlayable);
+            _sampleLocomotionIdleClipPlayable.SetApplyFootIK(false);
+            _sampleLocomotionStepClipPlayable.SetApplyFootIK(false);
+            _samplePolearmIdleClipPlayable.SetApplyFootIK(false);
+            _samplePolearmStrikeClipPlayable.SetApplyFootIK(false);
+            
+            _samplerGraph.Connect(_sampleLocomotionIdleClipPlayable, 0, _sampleMixer, 0);
+            _samplerGraph.Connect(_sampleLocomotionStepClipPlayable, 0, _sampleMixer, 1);
+            _samplerGraph.Connect(_samplePolearmIdleClipPlayable, 0, _sampleMixer, 2);
+            _samplerGraph.Connect(_samplePolearmStrikeClipPlayable, 0, _sampleMixer, 3);
+            
+            _sampleMixer.SetLayerMaskFromAvatarMask(0, locomotionAvatarMask);
+            _sampleMixer.SetLayerMaskFromAvatarMask(1, locomotionAvatarMask);
+            _sampleMixer.SetLayerMaskFromAvatarMask(2, polearmAvatarMask);
+            _sampleMixer.SetLayerMaskFromAvatarMask(3, polearmAvatarMask);
+            _sampleMixer.SetInputWeight(0, 1f);
+            _sampleMixer.SetInputWeight(1, 0f);
+            _sampleMixer.SetInputWeight(2, 1f);
+            _sampleMixer.SetInputWeight(3, 0f);
+            _sampleMixer.SetSpeed(0);
+            
+            output.SetSourcePlayable(_sampleMixer);
 
             _samplerGraph.Play();
-        }
-        private void Sample(out Vector3 weaponPos, out Quaternion weaponRot)
-        {
             _samplerGraph.Evaluate(0);
-
-            weaponPos = samplerWeaponBone.position;
-            weaponRot = samplerWeaponBone.rotation;
         }
-
         private void CreateGraph()
         {
             _graph = PlayableGraph.Create("Animation");
             _graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-            _mixer = AnimationMixerPlayable.Create(_graph, 3);
+            _mixer = AnimationLayerMixerPlayable.Create(_graph, 2);
+            _polearmMixer = AnimationMixerPlayable.Create(_graph, 3);
+            _locomotionMixer = AnimationMixerPlayable.Create(_graph, 2);
             var output = AnimationPlayableOutput.Create(_graph, "Animation Output", animator);
             
-            _idleClipPlayable = AnimationClipPlayable.Create(_graph, idleClip);
-            _swingClipPlayable = AnimationClipPlayable.Create(_graph, swingStrikePair.SwingAnimation);
-            _strikeClipPlayable = AnimationClipPlayable.Create(_graph, swingStrikePair.StrikeAnimation);
-
-            _graph.Connect(_idleClipPlayable, 0, _mixer, IDLE_INDEX);
-            _graph.Connect(_swingClipPlayable, 0, _mixer, SWING_INDEX);
-            _graph.Connect(_strikeClipPlayable, 0, _mixer, STRIKE_INDEX);
-
-            _mixer.SetInputWeight(IDLE_INDEX, 1f);
-            _mixer.SetInputWeight(SWING_INDEX, 0f);
-            _mixer.SetInputWeight(STRIKE_INDEX, 0f);
-
-            var job = CreateAnimationJob();
+            _locomotionIdleClipPlayable = AnimationClipPlayable.Create(_graph, locomotionIdleClip);
+            _locomotionStepForwardClipPlayable = AnimationClipPlayable.Create(_graph, locomotionStepForwardClip);
             
-            _animationPlayable = AnimationScriptPlayable.Create(_graph, job, 1);
-            _graph.Connect(_mixer, 0, _animationPlayable, 0);
-            _animationPlayable.SetInputWeight(0, 1f);
+            _polearmIdleClipPlayable = AnimationClipPlayable.Create(_graph, polearmIdleClip);
+            _polearmSwingClipPlayable = AnimationClipPlayable.Create(_graph, polearmSwingStrikePair.SwingAnimation);
+            _polearmStrikeClipPlayable = AnimationClipPlayable.Create(_graph, polearmSwingStrikePair.StrikeAnimation);
+            
+            _locomotionIdleClipPlayable.SetApplyFootIK(false);
+            _locomotionStepForwardClipPlayable.SetApplyFootIK(false);
+            _polearmIdleClipPlayable.SetApplyFootIK(false);
+            _polearmSwingClipPlayable.SetApplyFootIK(false);
+            _polearmStrikeClipPlayable.SetApplyFootIK(false);
 
-            output.SetSourcePlayable(_animationPlayable);
+            _graph.Connect(_locomotionIdleClipPlayable, 0, _locomotionMixer, LOCOMOTION_IDLE_ANIMATION_INDEX);
+            _graph.Connect(_locomotionStepForwardClipPlayable, 0, _locomotionMixer, LOCOMOTION_STEP_FORWARD_ANIMATION_INDEX);
+            
+            _graph.Connect(_polearmIdleClipPlayable, 0, _polearmMixer, POLEARM_IDLE_ANIMATION_INDEX);
+            _graph.Connect(_polearmSwingClipPlayable, 0, _polearmMixer, POLEARM_SWING_ANIMATION_INDEX);
+            _graph.Connect(_polearmStrikeClipPlayable, 0, _polearmMixer, POLEARM_STRIKE_ANIMATION_INDEX);
+            
+            _locomotionMixer.SetInputWeight(LOCOMOTION_IDLE_ANIMATION_INDEX, 1f);
+            _locomotionMixer.SetInputWeight(LOCOMOTION_STEP_FORWARD_ANIMATION_INDEX, 0f);
+            
+            _polearmMixer.SetInputWeight(POLEARM_IDLE_ANIMATION_INDEX, 1f);
+            _polearmMixer.SetInputWeight(POLEARM_SWING_ANIMATION_INDEX, 0f);
+            _polearmMixer.SetInputWeight(POLEARM_STRIKE_ANIMATION_INDEX, 0f);
+
+            _graph.Connect(_locomotionMixer, 0, _mixer, LOCOMOTION_LAYER_INDEX);
+            _graph.Connect(_polearmMixer, 0, _mixer, POLEARM_LAYER_INDEX);
+
+            _mixer.SetInputWeight(LOCOMOTION_LAYER_INDEX, 1f);
+            _mixer.SetInputWeight(POLEARM_LAYER_INDEX, 1f);
+            
+            _mixer.SetLayerMaskFromAvatarMask(LOCOMOTION_LAYER_INDEX, locomotionAvatarMask);
+            _mixer.SetLayerMaskFromAvatarMask(POLEARM_LAYER_INDEX, polearmAvatarMask);
+            
+            _polearmAnimationPlayable = AnimationScriptPlayable.Create(_graph, _polearmAnimationJob, 1);
+            _locomotionAnimationPlayable = AnimationScriptPlayable.Create(_graph, _locomotionAnimationJob, 1);
+            
+            _graph.Connect(_mixer, 0, _locomotionAnimationPlayable, 0);
+            _graph.Connect(_locomotionAnimationPlayable, 0, _polearmAnimationPlayable, 0);
+            
+            _polearmAnimationPlayable.SetInputWeight(0, 1f);
+            _locomotionAnimationPlayable.SetInputWeight(0, 1f);
+            
+            var riggedPlayable = rigBuilder.BuildPreviewGraph(_graph, _polearmAnimationPlayable);
+            
+            output.SetSourcePlayable(riggedPlayable);
 
             _graph.Play();
         }
-        private CalculateAnimationTransformsJob CreateAnimationJob()
+        private void CreatePolearmJob()
         {
             var startWeaponObjectPositionOffset = new Vector3(0, startWeaponOffset, 0);
-            var weaponRotOffset = Quaternion.Euler(weaponRotationOffset);
             var localShouldersPoint = samplerWeaponBone.InverseTransformPoint(samplerShouldersBone.position);
             var handsLocalOffset = new Vector3(0, localShouldersPoint.y, 0);
             
-            var config = new CalculateAnimationTransformsJobConfig
+            var config = new PolearmAnimationJobConfig
             {
-                WeaponRotationOffset = weaponRotOffset,
-                
                 HandsLocalOffset = handsLocalOffset,
             };
             
-            return new CalculateAnimationTransformsJob
+            _polearmAnimationJob = new PolearmAnimationJob
             {
                 Config = config,
                 WeaponObjectLocalStartPosition = startWeaponObjectPositionOffset,
                 
-                WeaponBone = animator.BindStreamTransform(weaponBone),
+                WeaponBone = animator.BindSceneTransform(weaponBone),
                 Weapon = animator.BindStreamTransform(weapon),
                 WeaponObject = animator.BindStreamTransform(weaponObject),
                 LeftHandRotationTransform = animator.BindSceneTransform(leftHandRotationTransform),
@@ -313,30 +535,83 @@ namespace AnimationSystem.Character
                 RightHandTarget = animator.BindStreamTransform(rightHandTarget)
             };
         }
+        private void CreateLocomotionJob()
+        {
+            var startPosition = samplerRightFootBone.position;
+            var rotation = samplerRightFootBone.rotation;
+            
+            var config = new LocomotionAnimationJobConfig
+            {
+                StepHeight = stepHeight
+            };
+            
+            _locomotionAnimationJob = new LocomotionAnimationJob
+            {
+                Config = config,
 
-        private void ChangeState(CharacterAnimationState newState)
-        {
-            _blendPassedTime = 0;
-            _animationState = newState;
+                FootRotation = rotation,
+                FootStartPosition = startPosition,
+                RightFootTarget = animator.BindStreamTransform(rightFootTarget)
+            };
         }
-        private void SetAnimationWeights(float idle, float swing, float strike)
+
+        private void ChangePolearmState(CharacterPolearmAnimationState newState)
         {
-            _mixer.SetInputWeight(IDLE_INDEX, idle);
-            _mixer.SetInputWeight(SWING_INDEX, swing);
-            _mixer.SetInputWeight(STRIKE_INDEX, strike);
+            _polearmBlendPassedTime = 0;
+            polearmAnimationState = newState;
         }
-        private void SetJobHitTargetWeight(float hitTargetWeight)
+        private void ChangeLocomotionState(CharacterLocomotionAnimationState newState)
         {
-            var job = _animationPlayable.GetJobData<CalculateAnimationTransformsJob>();
+            _locomotionBlendPassedTime = 0;
+            locomotionAnimationState = newState;
+        }
+        
+        private void SetPolearmAnimationWeights(float idle, float swing, float strike)
+        {
+            _polearmMixer.SetInputWeight(POLEARM_IDLE_ANIMATION_INDEX, idle);
+            _polearmMixer.SetInputWeight(POLEARM_SWING_ANIMATION_INDEX, swing);
+            _polearmMixer.SetInputWeight(POLEARM_STRIKE_ANIMATION_INDEX, strike);
+        }
+        private void SetPolearmJobHitTargetWeight(float hitTargetWeight)
+        {
+            var job = _polearmAnimationPlayable.GetJobData<PolearmAnimationJob>();
             job.HitTargetWeight = Mathf.Clamp01(hitTargetWeight);
-            _animationPlayable.SetJobData(job);
+            _polearmAnimationPlayable.SetJobData(job);
         }
-        private void SetJobMovingHandsWeight(float weaponWeight, float handWeight)
+        private void SetPolearmJobMovingHandsWeight(float weaponWeight, float handWeight)
         {
-            var job = _animationPlayable.GetJobData<CalculateAnimationTransformsJob>();
+            var job = _polearmAnimationPlayable.GetJobData<PolearmAnimationJob>();
             job.WeaponLocalPositionEndWeight = Mathf.Clamp01(weaponWeight);
             job.HandWeaponWeight = Mathf.Clamp01(handWeight);
-            _animationPlayable.SetJobData(job);
+            _polearmAnimationPlayable.SetJobData(job);
+        }
+        
+        private void SetLocomotionAnimationWeights(float idle, float stepForward)
+        {
+            _locomotionMixer.SetInputWeight(LOCOMOTION_IDLE_ANIMATION_INDEX, idle);
+            _locomotionMixer.SetInputWeight(LOCOMOTION_STEP_FORWARD_ANIMATION_INDEX, stepForward);
+        }
+        private void SetLocomotionJobStepWeight(float stepWeight)
+        {
+            var job = _locomotionAnimationPlayable.GetJobData<LocomotionAnimationJob>();
+            job.StepWeight = Mathf.Clamp01(stepWeight);
+            _locomotionAnimationPlayable.SetJobData(job);
+        }
+        
+        private void SetFootIKWeight(float weight)
+        {
+            rightFootIK.weight = weight;
+        }
+        private void SampleStrikeEnd(bool useStep, out Vector3 weaponPos, out Quaternion weaponRot)
+        {
+            _sampleMixer.SetInputWeight(0, useStep ? 0 : 1);
+            _sampleMixer.SetInputWeight(1, useStep ? 1 : 0);
+            _sampleMixer.SetInputWeight(2, 0);
+            _sampleMixer.SetInputWeight(3, 1);
+            _samplerGraph.Evaluate(0);
+
+            weaponPos = samplerWeaponBone.position;
+            weaponRot = samplerWeaponBone.rotation;
         }
 
         public void ManualDestroy()

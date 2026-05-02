@@ -12,3 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc6a8d4985844086b68c336e83b0ae89, type: 3}
   m_Name: Pair00
   m_EditorClassIdentifier: Assembly-CSharp::AnimationPairsSearchSystem.AnimationSwingStrikePair
+  swingAnimation: {fileID: -7543083669672256674, guid: 18a701b4849ff3047b2ff754f7d06c1c, type: 3}
+  strikeAnimation: {fileID: 8222329059088410224, guid: 18a701b4849ff3047b2ff754f7d06c1c, type: 3}
+  swingEndTime: 1
+  strikeStartTime: 0
+  blendTime: 0

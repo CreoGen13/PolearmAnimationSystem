@@ -3,9 +3,9 @@ using UnityEngine.Animations;
 
 namespace AnimationSystem.Jobs
 {
-    public struct CalculateAnimationTransformsJob : IAnimationJob
+    public struct PolearmAnimationJob : IAnimationJob
     {
-        public CalculateAnimationTransformsJobConfig Config;
+        public PolearmAnimationJobConfig Config;
 
         public float HitTargetWeight;
         public float WeaponLocalPositionEndWeight;
@@ -17,7 +17,7 @@ namespace AnimationSystem.Jobs
         public Vector3 WeaponObjectLocalStartPosition;
         public Vector3 WeaponObjectLocalEndPosition;
         
-        public TransformStreamHandle WeaponBone;
+        public TransformSceneHandle WeaponBone;
         public TransformStreamHandle Weapon;
         public TransformStreamHandle WeaponObject;
         
@@ -31,12 +31,9 @@ namespace AnimationSystem.Jobs
         
         public void ProcessAnimation(AnimationStream stream)
         {
-            var input = stream.GetInputStream(0);
-            
-            var weaponBonePosition = WeaponBone.GetPosition(input);
-            var weaponBoneRotation = WeaponBone.GetRotation(input);
-            
-            var weaponBakedRotation = weaponBoneRotation * Config.WeaponRotationOffset;
+            var weaponBonePosition = WeaponBone.GetPosition(stream);
+            var weaponBoneRotation = WeaponBone.GetRotation(stream);
+
             var weaponPosition = Vector3.Lerp(
                 Vector3.zero,
                 WeaponCorrectionDeltaPosition,
@@ -46,12 +43,12 @@ namespace AnimationSystem.Jobs
                 Quaternion.identity,
                 WeaponCorrectionDeltaRotation,
                 HitTargetWeight
-            ) * weaponBakedRotation;
+            ) * weaponBoneRotation;
             var weaponLocalPosition = Vector3.Lerp(
                 WeaponObjectLocalStartPosition,
                 WeaponObjectLocalEndPosition,
                 WeaponLocalPositionEndWeight);
-
+            
             WeaponObject.SetLocalPosition(
                 stream,
                 weaponLocalPosition);
@@ -66,14 +63,14 @@ namespace AnimationSystem.Jobs
             var isGrowing = WeaponObjectLocalEndPosition.y > WeaponObjectLocalStartPosition.y;
             var leftHandPosition = weaponPosition + weaponRotation * (
                 Config.HandsLocalOffset +
-                LeftHandPositionTransform.GetLocalPosition(input) +
+                LeftHandPositionTransform.GetLocalPosition(stream) +
                 (isGrowing ? handLocalPositionDelta : Vector3.zero));
-            var leftHandRotation = LeftHandRotationTransform.GetRotation(input);
+            var leftHandRotation = LeftHandRotationTransform.GetRotation(stream);
             var rightHandPosition = weaponPosition + weaponRotation * (
                 Config.HandsLocalOffset +
-                RightHandPositionTransform.GetLocalPosition(input) +
+                RightHandPositionTransform.GetLocalPosition(stream) +
                 (isGrowing ? Vector3.zero : handLocalPositionDelta));
-            var rightHandRotation = RightHandRotationTransform.GetRotation(input);
+            var rightHandRotation = RightHandRotationTransform.GetRotation(stream);
             LeftHandTarget.SetGlobalTR(
                 stream,
                 leftHandPosition,

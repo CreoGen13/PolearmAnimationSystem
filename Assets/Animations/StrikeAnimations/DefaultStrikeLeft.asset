@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: DefaultStrikeLeft
   m_EditorClassIdentifier: Assembly-CSharp::AnimationPairsSearchSystem.PreparedAnimationClip
   animationType: 1
-  clip: {fileID: 673938034132988103, guid: 18a701b4849ff3047b2ff754f7d06c1c, type: 3}
+  clip: {fileID: 8222329059088410224, guid: 18a701b4849ff3047b2ff754f7d06c1c, type: 3}
   blendStartTime: 0
   blendEndTime: 0.3

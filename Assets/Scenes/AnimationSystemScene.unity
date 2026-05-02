@@ -651,7 +651,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1907519787}
-  - component: {fileID: 1907519790}
   - component: {fileID: 1907519789}
   - component: {fileID: 1907519788}
   m_Layer: 5
@@ -780,20 +779,6 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
---- !u!114 &1907519790
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1907519786}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7f0f2370b3b03cc4cb250cdcb220ae5d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Infrastructure.UtilityMonoBehaviour.FpsView
-  fpsText: {fileID: 1907519789}
-  hudRefreshRate: 1
 --- !u!1 &2013410473
 GameObject:
   m_ObjectHideFlags: 1
@@ -1342,15 +1327,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 596406145254765054, guid: f9b262ae27513b749b34ae1ef9d52995, type: 3}
       propertyPath: m_LocalRotation.x
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 596406145254765054, guid: f9b262ae27513b749b34ae1ef9d52995, type: 3}
       propertyPath: m_LocalRotation.y
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 596406145254765054, guid: f9b262ae27513b749b34ae1ef9d52995, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 596406145254765054, guid: f9b262ae27513b749b34ae1ef9d52995, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x

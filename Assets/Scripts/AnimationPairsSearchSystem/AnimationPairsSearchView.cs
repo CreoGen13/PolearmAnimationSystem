@@ -23,6 +23,9 @@ namespace AnimationPairsSearchSystem
         [SerializeField] private Transform samplerWeaponBone;
 
         [Header("Settings")]
+        [SerializeField] private AvatarMask avatarMask;
+        
+        [Space]
         [SerializeField] private float stepSwing;
         [SerializeField] private float stepStrike;
         [SerializeField] private float maximumScore;
@@ -89,7 +92,7 @@ namespace AnimationPairsSearchSystem
         {
             var graph = PlayableGraph.Create("Animation");
             graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            var mixer = AnimationMixerPlayable.Create(graph, 2);
+            var mixer = AnimationLayerMixerPlayable.Create(graph, 2);
             var output = AnimationPlayableOutput.Create(graph, "Animation Output", samplerAnimator);
             
             var swingClipPlayable = AnimationClipPlayable.Create(graph, swingClip.Clip);
@@ -98,6 +101,8 @@ namespace AnimationPairsSearchSystem
             graph.Connect(swingClipPlayable, 0, mixer, 0);
             graph.Connect(strikeClipPlayable, 0, mixer, 1);
 
+            mixer.SetLayerMaskFromAvatarMask(0, avatarMask);
+            mixer.SetLayerMaskFromAvatarMask(1, avatarMask);
             mixer.SetInputWeight(0, 1f);
             mixer.SetInputWeight(1, 0f);
 
